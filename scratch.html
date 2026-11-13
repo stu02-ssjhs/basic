@@ -1,0 +1,1212 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>國一資科 Scratch 作業自動評分系統 - 基礎篇：貓狗對話與課堂練習（斑馬走路）</title>
+  <!-- 載入 JSZip 與 SheetJS CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    /* ==========================================================================
+       設計系統與配色變數 (Scratch 3.0 官方積木色系 & 教育介面)
+       ========================================================================== */
+    :root {
+      --primary-color: #3b82f6;
+      --primary-dark: #2563eb;
+      --success-color: #10b981;
+      --success-bg: #d1fae5;
+      --success-text: #065f46;
+      --warning-color: #f59e0b;
+      --warning-bg: #fef3c7;
+      --danger-color: #ef4444;
+      --danger-bg: #fee2e2;
+      --danger-text: #991b1b;
+      --bg-color: #f1f5f9;
+      --card-bg: #ffffff;
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --border-color: #e2e8f0;
+
+      /* Scratch 3.0 官方積木分類配色 */
+      --sb-motion: #4c97ff;      /* 動作 (藍) */
+      --sb-looks: #9966ff;       /* 外觀 (紫) */
+      --sb-sound: #cf63cf;       /* 音效 (粉紫) */
+      --sb-events: #ffbf00;      /* 事件 (黃) */
+      --sb-control: #ffab19;     /* 控制 (橘黃) */
+      --sb-sensing: #5cb1d6;     /* 偵測 (淺藍) */
+      --sb-operators: #59c059;   /* 運算 (綠) */
+      --sb-variables: #ff8c1a;   /* 變數 (深橘) */
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      margin: 0;
+      padding: 24px 16px;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1120px;
+      margin: 0 auto;
+    }
+
+    /* 頁首橫幅 */
+    header {
+      background: linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%);
+      color: #ffffff;
+      padding: 28px 32px;
+      border-radius: 16px;
+      box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.25);
+      margin-bottom: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+    }
+
+    header p {
+      margin: 0;
+      font-size: 15px;
+      opacity: 0.92;
+    }
+
+    /* 通用卡片容器 */
+    .card {
+      background: var(--card-bg);
+      border-radius: 16px;
+      padding: 24px 28px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.04);
+      margin-bottom: 24px;
+      border: 1px solid var(--border-color);
+    }
+
+    .rubric-card {
+      border-top: 5px solid var(--primary-color);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .card-title {
+      margin: 0;
+      font-size: 19px;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .pass-badge-info {
+      background-color: #eff6ff;
+      color: var(--primary-dark);
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 700;
+      border: 1px solid #bfdbfe;
+    }
+
+    /* 評分標準表格 */
+    .table-responsive {
+      width: 100%;
+      overflow-x: auto;
+    }
+
+    .rubric-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    .rubric-table th, .rubric-table td {
+      border: 1px solid var(--border-color);
+      padding: 14px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .rubric-table th {
+      background-color: #f8fafc;
+      color: #475569;
+      font-weight: 700;
+    }
+
+    .score-col {
+      text-align: center !important;
+      font-weight: 800;
+      color: var(--primary-dark);
+      width: 105px;
+      white-space: nowrap;
+    }
+
+    .sub-item-list {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .sub-item-list li {
+      margin-bottom: 6px;
+    }
+
+    .sub-item-list li:last-child {
+      margin-bottom: 0;
+    }
+
+    /* Scratch 3.0 視覺積木標籤 */
+    .block-preview-box {
+      background-color: #f8fafc;
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px dashed #cbd5e1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .sb-block {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 6px;
+      color: #ffffff;
+      font-size: 12.5px;
+      font-weight: 700;
+      box-shadow: 0 2px 0 rgba(0, 0, 0, 0.18);
+      width: fit-content;
+      letter-spacing: 0.2px;
+    }
+
+    .sb-motion { background-color: var(--sb-motion); border: 1px solid #3373cc; }
+    .sb-looks { background-color: var(--sb-looks); border: 1px solid #774dcb; }
+    .sb-events { background-color: var(--sb-events); color: #332200; border: 1px solid #cc9900; }
+    .sb-control { background-color: var(--sb-control); border: 1px solid #cf8b17; }
+    .sb-sensing { background-color: var(--sb-sensing); border: 1px solid #2e8eb8; }
+
+    .sb-param {
+      background-color: #ffffff;
+      color: #334155;
+      padding: 1px 7px;
+      border-radius: 10px;
+      margin: 0 4px;
+      font-size: 11.5px;
+      font-weight: 800;
+    }
+
+    /* 檔案上傳拖曳區 */
+    .upload-area {
+      background: var(--card-bg);
+      border: 2.5px dashed var(--primary-color);
+      border-radius: 16px;
+      padding: 36px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      margin-bottom: 24px;
+    }
+
+    .upload-area:hover, .upload-area.dragover {
+      background-color: #eff6ff;
+      border-color: var(--primary-dark);
+      transform: translateY(-2px);
+    }
+
+    .upload-icon {
+      font-size: 44px;
+      margin-bottom: 10px;
+      display: block;
+    }
+
+    .upload-area h3 {
+      margin: 0 0 6px 0;
+      font-size: 18px;
+      color: var(--text-main);
+    }
+
+    .upload-area p {
+      margin: 0;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    /* 按鈕與工具列 */
+    .btn {
+      border: none;
+      padding: 10px 20px;
+      font-size: 14.5px;
+      font-weight: 700;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-success {
+      background-color: var(--success-color);
+      color: #ffffff;
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+    }
+
+    .btn-success:hover {
+      background-color: #059669;
+      transform: translateY(-1px);
+    }
+
+    .btn-outline {
+      background-color: #f1f5f9;
+      color: #334155;
+      border: 1px solid #cbd5e1;
+      padding: 6px 12px;
+      font-size: 13px;
+    }
+
+    .btn-outline:hover {
+      background-color: #e2e8f0;
+    }
+
+    /* 提示訊息框 (取代 alert) */
+    .toast-banner {
+      display: none;
+      padding: 14px 18px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      font-weight: 600;
+      font-size: 14px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .toast-error {
+      background-color: var(--danger-bg);
+      color: var(--danger-text);
+      border: 1px solid #fecaca;
+    }
+
+    /* 成績總表 */
+    .summary-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14.5px;
+    }
+
+    .summary-table th, .summary-table td {
+      border: 1px solid var(--border-color);
+      padding: 12px 10px;
+      text-align: center;
+    }
+
+    .summary-table th {
+      background-color: #f8fafc;
+      color: #334155;
+      font-weight: 700;
+    }
+
+    .summary-table tbody tr {
+      transition: background-color 0.15s ease;
+      cursor: pointer;
+    }
+
+    .summary-table tbody tr:hover {
+      background-color: #f1f5f9;
+    }
+
+    .summary-table tbody tr.active-row {
+      background-color: #eff6ff;
+    }
+
+    .badge {
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 12.5px;
+      display: inline-block;
+    }
+
+    .badge.pass {
+      background-color: var(--success-bg);
+      color: var(--success-text);
+    }
+
+    .badge.fail {
+      background-color: var(--danger-bg);
+      color: var(--danger-text);
+    }
+
+    /* 學生詳細評分報告區 */
+    .student-detail-box {
+      margin-top: 24px;
+      padding-top: 24px;
+      border-top: 2px dashed #cbd5e1;
+    }
+
+    .detail-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .detail-header h3 {
+      margin: 0;
+      font-size: 18px;
+      color: var(--primary-dark);
+    }
+
+    .stage-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+
+    .stage-box {
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 16px 20px;
+      background-color: #fcfcfd;
+    }
+
+    .stage-title {
+      font-weight: 700;
+      font-size: 15.5px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #f1f5f9;
+    }
+
+    .stage-score-pill {
+      background-color: #e2e8f0;
+      color: #1e293b;
+      padding: 3px 10px;
+      border-radius: 8px;
+      font-size: 13.5px;
+    }
+
+    .check-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin: 8px 0;
+      font-size: 14px;
+    }
+
+    .check-icon {
+      font-weight: 800;
+      font-size: 15px;
+      line-height: 1.4;
+    }
+
+    .check-icon.success { color: var(--success-color); }
+    .check-icon.fail { color: var(--danger-color); }
+
+    /* 修正建議區 */
+    .suggestion-box {
+      background-color: var(--warning-bg);
+      border-left: 5px solid var(--warning-color);
+      padding: 16px 20px;
+      margin-top: 20px;
+      border-radius: 0 12px 12px 0;
+    }
+
+    .suggestion-box h4 {
+      margin: 0 0 8px 0;
+      color: #b45309;
+      font-size: 15.5px;
+    }
+
+    .suggestion-box ul {
+      margin: 0;
+      padding-left: 20px;
+      font-size: 14px;
+      color: #78350f;
+    }
+
+    .suggestion-box li {
+      margin-bottom: 4px;
+    }
+
+    @media (max-width: 768px) {
+      header { padding: 20px; }
+      header h1 { font-size: 21px; }
+      .card { padding: 18px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <!-- 系統標題區 -->
+  <header>
+    <h1>🐱🐶 國一資科 Scratch 作業自動評分系統</h1>
+    <p>單元主題：基礎篇 — 貓狗對話與課堂練習（斑馬在走路）｜支援全班 .sb3 批次自動檢測</p>
+  </header>
+
+  <!-- 訊息提示橫幅 -->
+  <div id="toastBanner" class="toast-banner toast-error">
+    <span id="toastMessage"></span>
+    <button class="btn-outline" onclick="hideToast()">關閉</button>
+  </div>
+
+  <!-- 1. 作業評分標準對照表 -->
+  <div class="card rubric-card">
+    <div class="card-header">
+      <h2 class="card-title">📋 作業評分標準對照表</h2>
+      <span class="pass-badge-info">🎯 及格標準：80 分（滿分 100 分）</span>
+    </div>
+    <div class="table-responsive">
+      <table class="rubric-table">
+        <thead>
+          <tr>
+            <th style="width: 21%;">評分階段</th>
+            <th style="width: 41%;">檢核重點與細項標準</th>
+            <th style="width: 28%;">Scratch 3.0 參考積木</th>
+            <th class="score-col">配分</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- 階段一 -->
+          <tr>
+            <td>
+              <strong>階段一：舞台背景與角色初始設定</strong>
+            </td>
+            <td>
+              <ul class="sub-item-list">
+                <li><strong>子項目 1-1（15分）舞台背景匯入：</strong>匯入非預設背景（如 <code>Basketball 1</code>、<code>Savanna</code> 等）。</li>
+                <li><strong>子項目 1-2（15分）角色與初始狀態：</strong>建立對話角色（如貓與狗，或斑馬練習角色）並設定初始座標或面對方向。</li>
+              </ul>
+            </td>
+            <td>
+              <div class="block-preview-box">
+                <span class="sb-block sb-motion">定位到 x: <span class="sb-param">-159</span> y: <span class="sb-param">-80</span></span>
+                <span class="sb-block sb-motion">面朝 <span class="sb-param">-90</span> 度</span>
+              </div>
+            </td>
+            <td class="score-col">30 分<br><span style="font-size: 12px; font-weight: normal; color: #64748b;">(15 + 15)</span></td>
+          </tr>
+
+          <!-- 階段二 -->
+          <tr>
+            <td>
+              <strong>階段二：動畫移動與重複控制邏輯</strong>
+            </td>
+            <td>
+              <ul class="sub-item-list">
+                <li><strong>子項目 2-1（15分）計次重複迴圈：</strong>使用「重複 (10/15) 次」積木包覆移動動作。</li>
+                <li><strong>子項目 2-2（15分）座標移動與節奏：</strong>迴圈內包含「移動 (10/30) 點」與「等待 (0.2/0.3) 秒」積木。</li>
+                <li><strong>子項目 2-3（10分）造型切換動畫：</strong>迴圈內包含「造型換成下一個」做出走路動態。</li>
+              </ul>
+            </td>
+            <td>
+              <div class="block-preview-box">
+                <span class="sb-block sb-control">重複 <span class="sb-param">10</span> 次</span>
+                <span class="sb-block sb-motion">移動 <span class="sb-param">10</span> 點</span>
+                <span class="sb-block sb-looks">造型換成下一個</span>
+                <span class="sb-block sb-control">等待 <span class="sb-param">0.2</span> 秒</span>
+              </div>
+            </td>
+            <td class="score-col">40 分<br><span style="font-size: 12px; font-weight: normal; color: #64748b;">(15 + 15 + 10)</span></td>
+          </tr>
+
+          <!-- 階段三 -->
+          <tr>
+            <td>
+              <strong>階段三：角色對話與廣播訊息互動</strong>
+            </td>
+            <td>
+              <ul class="sub-item-list">
+                <li><strong>子項目 3-1（15分）角色對話台詞：</strong>使用「說出 [...] 持續 (2) 秒」呈現對話台詞。</li>
+                <li><strong>子項目 3-2（15分）廣播與接收同步：</strong>使用「廣播訊息 [...]」與另一角色「當收到訊息 [...]」串接互動（單角色練習亦支援多段對話保底檢核）。</li>
+              </ul>
+            </td>
+            <td>
+              <div class="block-preview-box">
+                <span class="sb-block sb-looks">說出 <span class="sb-param">要不要一起去吃飯?</span> 持續 <span class="sb-param">2</span> 秒</span>
+                <span class="sb-block sb-events">廣播訊息 <span class="sb-param">小狗說話</span></span>
+                <span class="sb-block sb-events">當收到訊息 <span class="sb-param">小狗說話</span></span>
+              </div>
+            </td>
+            <td class="score-col">30 分<br><span style="font-size: 12px; font-weight: normal; color: #64748b;">(15 + 15)</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 2. Drag & Drop 批次上傳區 -->
+  <div class="upload-area" id="dropZone" onclick="document.getElementById('fileInput').click()">
+    <span class="upload-icon">📂</span>
+    <h3>點擊此處或將 Scratch 專案檔（.sb3）拖曳進來</h3>
+    <p>支援單一檔案或全班多個 .sb3 檔案同時批次選取與拖曳驗證</p>
+    <input type="file" id="fileInput" accept=".sb3" multiple onchange="handleFileSelect(event)">
+  </div>
+
+  <!-- 3. 評分結果總表與明細 -->
+  <div id="resultCard" class="card" style="display: none;">
+    <div class="card-header">
+      <h2 class="card-title">📊 班級批次評分結果總表（已解析 <span id="batchCount">0</span> 份作業）</h2>
+      <button class="btn btn-success" onclick="exportToExcel()">📥 一鍵匯出全班 Excel 成績單 (.xlsx)</button>
+    </div>
+
+    <div class="table-responsive">
+      <table class="summary-table">
+        <thead>
+          <tr>
+            <th style="text-align: left; padding-left: 16px;">學生 / 檔案名稱</th>
+            <th>偵測模式</th>
+            <th>階段一 (30分)</th>
+            <th>階段二 (40分)</th>
+            <th>階段三 (30分)</th>
+            <th>總分</th>
+            <th>判定狀態</th>
+            <th>檢視報告</th>
+          </tr>
+        </thead>
+        <tbody id="summaryTableBody"></tbody>
+      </table>
+    </div>
+
+    <!-- 學生詳細評分報告視圖 -->
+    <div id="studentDetailBox" class="student-detail-box" style="display: none;">
+      <div class="detail-header">
+        <h3>🔍 學生詳細評分報告：<span id="detailStudentName"></span></h3>
+        <span id="detailDetectedInfo" style="font-size: 13px; color: var(--text-muted);"></span>
+      </div>
+
+      <div class="stage-grid">
+        <!-- 階段一明細 -->
+        <div class="stage-box">
+          <div class="stage-title">
+            <span>階段一：舞台背景與角色初始設定</span>
+            <span class="stage-score-pill" id="detailStage1Score">0 / 30 分</span>
+          </div>
+          <div id="detailStage1Details"></div>
+        </div>
+
+        <!-- 階段二明細 -->
+        <div class="stage-box">
+          <div class="stage-title">
+            <span>階段二：動畫移動與重複控制邏輯（細項檢核）</span>
+            <span class="stage-score-pill" id="detailStage2Score">0 / 40 分</span>
+          </div>
+          <div id="detailStage2Details"></div>
+        </div>
+
+        <!-- 階段三明細 -->
+        <div class="stage-box">
+          <div class="stage-title">
+            <span>階段三：角色對話與廣播訊息互動</span>
+            <span class="stage-score-pill" id="detailStage3Score">0 / 30 分</span>
+          </div>
+          <div id="detailStage3Details"></div>
+        </div>
+      </div>
+
+      <!-- 未達 80 分自動修正建議 -->
+      <div id="detailSuggestionBox" class="suggestion-box" style="display: none;">
+        <h4>💡 修正建議（未達 80 分及格標準，請參考以下提示調整後重新上傳）</h4>
+        <ul id="detailSuggestionList"></ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  /**
+   * 儲存所有解析後的學生成績資料
+   */
+  let batchResults = [];
+
+  // 提示訊息控制 (不使用 alert)
+  function showToast(msg) {
+    const banner = document.getElementById('toastBanner');
+    document.getElementById('toastMessage').innerText = msg;
+    banner.style.display = 'flex';
+  }
+
+  function hideToast() {
+    document.getElementById('toastBanner').style.display = 'none';
+  }
+
+  // Drag & Drop 拖曳事件綁定
+  const dropZone = document.getElementById('dropZone');
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('dragover');
+  });
+  dropZone.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+  });
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processBatchFiles(e.dataTransfer.files);
+    }
+  });
+
+  function handleFileSelect(e) {
+    if (e.target.files && e.target.files.length > 0) {
+      processBatchFiles(e.target.files);
+      e.target.value = ''; // 重置 input 允許重複上傳同名檔案
+    }
+  }
+
+  /**
+   * 批次解壓縮 .sb3 並解析 project.json
+   */
+  async function processBatchFiles(files) {
+    hideToast();
+    const sb3Files = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.sb3'));
+
+    if (sb3Files.length === 0) {
+      showToast("⚠️ 請選擇有效的 Scratch 3.0 專案檔案（副檔名為 .sb3）！");
+      return;
+    }
+
+    batchResults = [];
+
+    for (const file of sb3Files) {
+      try {
+        const zip = new JSZip();
+        const zipContent = await zip.loadAsync(file);
+        const projectJsonFile = zipContent.file("project.json");
+
+        if (!projectJsonFile) {
+          throw new Error("壓縮檔內找不到 project.json");
+        }
+
+        const jsonText = await projectJsonFile.async("string");
+        const projectData = JSON.parse(jsonText);
+        const studentName = file.name.replace(/\.sb3$/i, '');
+
+        const gradedResult = evaluateScratchProject(studentName, projectData);
+        batchResults.push(gradedResult);
+      } catch (err) {
+        console.error(`解析檔案 ${file.name} 發生錯誤:`, err);
+        batchResults.push({
+          studentName: file.name.replace(/\.sb3$/i, ''),
+          modeLabel: "檔案損毀",
+          detectedSummary: "無法讀取 project.json",
+          s1: 0, s2: 0, s3: 0,
+          totalScore: 0,
+          isPass: false,
+          s1Details: [{ pass: false, text: "檔案格式異常或無法解壓縮，請確認是否為正確的 .sb3 專案檔。" }],
+          s2Details: [],
+          s3Details: [],
+          suggestions: ["請在 Scratch 中重新選擇「檔案 → 儲存到你的電腦」並再次上傳。"]
+        });
+      }
+    }
+
+    renderBatchSummaryTable();
+  }
+
+  /**
+   * 高相容性 AST 積木檢測引擎
+   * 針對「貓狗對話」與「斑馬走路」單元規則進行深度檢查
+   */
+  function evaluateScratchProject(studentName, projectData) {
+    let s1 = 0, s2 = 0, s3 = 0;
+    const s1Details = [];
+    const s2Details = [];
+    const s3Details = [];
+    const suggestions = [];
+
+    const targets = Array.isArray(projectData.targets) ? projectData.targets : [];
+    const stage = targets.find(t => t.isStage === true);
+    const sprites = targets.filter(t => !t.isStage);
+
+    // 判斷作業類型傾向（單角色走路練習 vs 雙角色對話實作）
+    const isSingleSpriteMode = sprites.length === 1;
+    const modeLabel = sprites.length >= 2 ? `雙角色對話 (${sprites.length}角色)` : (sprites.length === 1 ? "單角色走路練習" : "無角色");
+
+    // 收集所有積木並建立查找表
+    const allBlocks = [];
+    sprites.forEach(sprite => {
+      const blocksObj = sprite.blocks || {};
+      const blockMap = new Map();
+
+      Object.entries(blocksObj).forEach(([id, blk]) => {
+        if (blk && typeof blk === 'object' && blk.opcode) {
+          blk._id = id;
+          blk._spriteName = sprite.name;
+          blockMap.set(id, blk);
+          allBlocks.push(blk);
+        }
+      });
+      sprite._blockMap = blockMap;
+    });
+
+    /* ========================================================================
+       階段一：舞台背景與角色初始設定 (30分 = 15 + 15)
+       ======================================================================== */
+    // 子項目 1-1：舞台背景匯入 (15分)
+    const costumes = stage && Array.isArray(stage.costumes) ? stage.costumes : [];
+    const nonDefaultBackdrops = costumes.filter(c => {
+      const name = (c.name || '').trim();
+      return name !== '背景1' && name !== 'backdrop1' && name !== '';
+    });
+
+    if (nonDefaultBackdrops.length > 0 || costumes.length >= 2) {
+      s1 += 15;
+      const bgNames = nonDefaultBackdrops.length > 0
+        ? nonDefaultBackdrops.map(c => c.name).join('、')
+        : costumes.map(c => c.name).join('、');
+      s1Details.push({
+        pass: true,
+        text: `【子項目 1-1】舞台背景匯入（15/15分）：已匯入自訂舞台背景（${bgNames}）。`
+      });
+    } else {
+      s1Details.push({
+        pass: false,
+        text: `【子項目 1-1】舞台背景匯入（0/15分）：偵測到仍為預設空白背景，未匯入指定背景（如 Basketball 1 或 Savanna）。`
+      });
+      suggestions.push("【階段一】請點選右下角舞台區，匯入一張符合情境的背景（例如 Basketball 1 或 Savanna）。");
+    }
+
+    // 子項目 1-2：角色建立與初始狀態設定 (15分)
+    const initBlocks = allBlocks.filter(b =>
+      b.opcode === 'motion_gotoxy' ||
+      b.opcode === 'motion_setx' ||
+      b.opcode === 'motion_sety' ||
+      b.opcode === 'motion_pointindirection' ||
+      b.opcode === 'motion_pointtowards' ||
+      b.opcode === 'motion_setrotationstyle'
+    );
+
+    // 檢查是否有調整角色方向(非預設90度，例如小狗面朝-90度)或使用初始定位積木
+    const hasCustomDirection = sprites.some(sp => typeof sp.direction === 'number' && sp.direction !== 90);
+    const hasValidSprites = sprites.length >= 1;
+
+    if (hasValidSprites && (initBlocks.length > 0 || hasCustomDirection || sprites.length >= 2)) {
+      s1 += 15;
+      const spriteNames = sprites.map(s => s.name).join('、');
+      const initInfo = initBlocks.length > 0 ? "已使用定位/面向積木" : (hasCustomDirection ? "已調整角色面對方向" : "已建立雙角色");
+      s1Details.push({
+        pass: true,
+        text: `【子項目 1-2】角色與初始狀態設定（15/15分）：已建立角色（${spriteNames}），且${initInfo}。`
+      });
+    } else {
+      s1Details.push({
+        pass: false,
+        text: `【子項目 1-2】角色與初始狀態設定（0/15分）：角色數量不足或未設定初始定位（定位到 x, y）與面對方向。`
+      });
+      suggestions.push("【階段一】請確認已新增對應角色，並加上「定位到 x: ... y: ...」積木或調整角色的面對方向（如 -90 度）。");
+    }
+
+    /* ========================================================================
+       階段二：動畫移動與重複控制邏輯 (40分 = 15 + 15 + 10)
+       深度追蹤 control_repeat 內部的 SUBSTACK 積木鏈
+       ======================================================================== */
+    const repeatBlocks = allBlocks.filter(b => b.opcode === 'control_repeat');
+    let loopHasMove = false;
+    let loopHasWait = false;
+    let loopHasNextCostume = false;
+    let detectedLoopCount = null;
+
+    // 追蹤每個 repeat 積木的 SUBSTACK 內部積木鏈
+    repeatBlocks.forEach(rep => {
+      const ownerSprite = sprites.find(s => s.name === rep._spriteName);
+      if (!ownerSprite || !ownerSprite._blockMap) return;
+
+      // 讀取重複次數參數
+      if (rep.inputs && rep.inputs.TIMES && Array.isArray(rep.inputs.TIMES[1])) {
+        detectedLoopCount = rep.inputs.TIMES[1][1];
+      }
+
+      const innerBlocks = traverseSubstack(rep, 'SUBSTACK', ownerSprite._blockMap);
+      innerBlocks.forEach(ib => {
+        if (ib.opcode === 'motion_movesteps' || ib.opcode === 'motion_changexby' || ib.opcode === 'motion_changeyby') {
+          loopHasMove = true;
+        }
+        if (ib.opcode === 'control_wait') {
+          loopHasWait = true;
+        }
+        if (ib.opcode === 'looks_nextcostume' || ib.opcode === 'looks_switchcostumeto') {
+          loopHasNextCostume = true;
+        }
+      });
+    });
+
+    // 子項目 2-1：計次重複迴圈結構 (15分)
+    if (repeatBlocks.length > 0) {
+      s2 += 15;
+      const countText = detectedLoopCount ? `（設定重複 ${detectedLoopCount} 次）` : "";
+      s2Details.push({
+        pass: true,
+        text: `【子項目 2-1】計次重複迴圈結構（15/15分）：成功使用「重複 ... 次」控制積木${countText}。`
+      });
+    } else {
+      s2Details.push({
+        pass: false,
+        text: `【子項目 2-1】計次重複迴圈結構（0/15分）：未偵測到控制類別的「重複 (10/15) 次」積木。`
+      });
+      suggestions.push("【階段二】請使用橘色控制類別的「重複 (10) 次」或「重複 (15) 次」積木來包覆走路動作。");
+    }
+
+    // 子項目 2-2：座標移動與節奏控制 (15分)
+    const anyMove = allBlocks.some(b => b.opcode === 'motion_movesteps' || b.opcode === 'motion_changexby');
+    const anyWait = allBlocks.some(b => b.opcode === 'control_wait');
+
+    if (loopHasMove && loopHasWait) {
+      s2 += 15;
+      s2Details.push({
+        pass: true,
+        text: `【子項目 2-2】座標移動與節奏控制（15/15分）：迴圈內同時包含「移動 ... 點」與「等待 ... 秒」積木。`
+      });
+    } else if (loopHasMove || loopHasWait) {
+      s2 += 8;
+      const missingPart = !loopHasMove ? "「移動 (10/30) 點」" : "「等待 (0.2/0.3) 秒」";
+      s2Details.push({
+        pass: false,
+        text: `【子項目 2-2】座標移動與節奏控制（8/15分）：迴圈內缺少${missingPart}積木。`
+      });
+      suggestions.push(`【階段二】請檢查重複迴圈內部，補上缺少的${missingPart}積木以控制移動步伐與停頓節奏。`);
+    } else {
+      const outsideHint = (anyMove || anyWait) ? "（偵測到積木放在重複迴圈外面，請拖曳進迴圈內部）" : "";
+      s2Details.push({
+        pass: false,
+        text: `【子項目 2-2】座標移動與節奏控制（0/15分）：迴圈內部未包含移動與等待積木${outsideHint}。`
+      });
+      suggestions.push("【階段二】請將「移動 (10/30) 點」與「等待 (0.2/0.3) 秒」積木放入「重複 ... 次」積木的凹槽內部。");
+    }
+
+    // 子項目 2-3：造型切換動畫呈現 (10分)
+    const anyCostume = allBlocks.some(b => b.opcode === 'looks_nextcostume' || b.opcode === 'looks_switchcostumeto');
+    if (loopHasNextCostume) {
+      s2 += 10;
+      s2Details.push({
+        pass: true,
+        text: `【子項目 2-3】造型切換動畫呈現（10/10分）：迴圈內已正確嵌入「造型換成下一個」積木做出走路動態。`
+      });
+    } else {
+      const outsideHint = anyCostume ? "（偵測到換造型積木未放入重複迴圈中）" : "";
+      s2Details.push({
+        pass: false,
+        text: `【子項目 2-3】造型切換動畫呈現（0/10分）：迴圈內缺少「造型換成下一個」積木${outsideHint}。`
+      });
+      suggestions.push("【階段二】請在重複迴圈內部加入紫色外觀類別的「造型換成下一個」積木，讓角色雙腳交替走動。");
+    }
+
+    /* ========================================================================
+       階段三：角色對話與廣播訊息互動 (30分 = 15 + 15)
+       ======================================================================== */
+    const sayBlocks = allBlocks.filter(b => b.opcode === 'looks_sayforsecs' || b.opcode === 'looks_say');
+    const broadcastBlocks = allBlocks.filter(b => b.opcode === 'event_broadcast' || b.opcode === 'event_broadcastandwait');
+    const receiveBlocks = allBlocks.filter(b => b.opcode === 'event_whenbroadcastreceived');
+
+    // 子項目 3-1：角色對話台詞輸出 (15分)
+    if (sayBlocks.length > 0) {
+      s3 += 15;
+      // 擷取台詞範例顯示
+      const sampleTexts = [];
+      sayBlocks.forEach(sb => {
+        if (sb.inputs && sb.inputs.MESSAGE && Array.isArray(sb.inputs.MESSAGE[1])) {
+          sampleTexts.push(`「${sb.inputs.MESSAGE[1][1]}」`);
+        }
+      });
+      const sampleStr = sampleTexts.length > 0 ? `（台詞如：${sampleTexts.slice(0, 2).join('、')}）` : "";
+      s3Details.push({
+        pass: true,
+        text: `【子項目 3-1】角色對話台詞輸出（15/15分）：已使用「說出」積木呈現對話內容${sampleStr}。`
+      });
+    } else if (isSingleSpriteMode && loopHasMove && loopHasNextCostume && loopHasWait) {
+      // 若為「斑馬在走路」課堂練習純動畫作品，給予彈性保底得分
+      s3 += 15;
+      s3Details.push({
+        pass: true,
+        text: `【子項目 3-1】角色表現檢核（15/15分）：偵測為單角色走路動畫練習（斑馬在走路），動畫完整符合練習規範。`
+      });
+    } else {
+      s3Details.push({
+        pass: false,
+        text: `【子項目 3-1】角色對話台詞輸出（0/15分）：未偵測到外觀類別的「說出 [...] 持續 (2) 秒」積木。`
+      });
+      suggestions.push("【階段三】請使用紫色外觀類別的「說出 [...] 持續 (2) 秒」積木，讓角色說出對話台詞。");
+    }
+
+    // 子項目 3-2：事件廣播與接收同步機制 (15分)
+    const sentMessages = new Set();
+    broadcastBlocks.forEach(bb => {
+      const msgName = extractBroadcastName(bb);
+      if (msgName) sentMessages.add(msgName);
+    });
+
+    const receivedMessages = new Set();
+    const receiverSprites = new Set();
+    receiveBlocks.forEach(rb => {
+      if (rb.fields && rb.fields.BROADCAST_OPTION && rb.fields.BROADCAST_OPTION[0]) {
+        receivedMessages.add(rb.fields.BROADCAST_OPTION[0]);
+        receiverSprites.add(rb._spriteName);
+      }
+    });
+
+    // 檢查廣播名稱是否成功匹配
+    let matchedMsg = null;
+    sentMessages.forEach(msg => {
+      if (receivedMessages.has(msg)) matchedMsg = msg;
+    });
+
+    if (matchedMsg) {
+      s3 += 15;
+      s3Details.push({
+        pass: true,
+        text: `【子項目 3-2】事件廣播與接收同步（15/15分）：成功透過廣播訊息「${matchedMsg}」串接雙角色對話互動。`
+      });
+    } else if (broadcastBlocks.length > 0 && receiveBlocks.length > 0) {
+      s3 += 10;
+      s3Details.push({
+        pass: false,
+        text: `【子項目 3-2】事件廣播與接收同步（10/15分）：已使用廣播與接收積木，但發送與接收的訊息名稱不一致。`
+      });
+      suggestions.push("【階段三】請確認發送角色的「廣播訊息」與接收角色的「當收到訊息」下拉選單名稱完全一致。");
+    } else if (isSingleSpriteMode && loopHasMove && loopHasNextCostume) {
+      // 單角色「斑馬在走路」課堂練習無需廣播，給予彈性保底得分
+      s3 += 15;
+      s3Details.push({
+        pass: true,
+        text: `【子項目 3-2】互動同步檢核（15/15分）：單角色課堂練習模式（無需跨角色廣播），自動核予滿分。`
+      });
+    } else if (sayBlocks.length >= 2) {
+      // 彈性保底：未使用廣播但使用多段說出積木
+      s3 += 8;
+      s3Details.push({
+        pass: false,
+        text: `【子項目 3-2】事件廣播與接收同步（8/15分）：偵測到多段對話但未使用「廣播訊息」與「當收到訊息」同步控制。`
+      });
+      suggestions.push("【階段三】建議使用事件類別的「廣播訊息 [...]」與另一角色的「當收到訊息 [...]」來精準控制對話順序。");
+    } else {
+      s3Details.push({
+        pass: false,
+        text: `【子項目 3-2】事件廣播與接收同步（0/15分）：缺少「廣播訊息 [...]」與「當收到訊息 [...]」積木。`
+      });
+      suggestions.push("【階段三】請在第一位角色說話後加上「廣播訊息 [小狗說話]」，並在第二位角色加上「當收到訊息 [小狗說話]」接續對話。");
+    }
+
+    const totalScore = s1 + s2 + s3;
+    return {
+      studentName,
+      modeLabel,
+      detectedSummary: `舞台背景 ${costumes.length} 張｜角色 ${sprites.length} 個`,
+      s1, s2, s3,
+      totalScore,
+      isPass: totalScore >= 80,
+      s1Details,
+      s2Details,
+      s3Details,
+      suggestions
+    };
+  }
+
+  /**
+   * 遞迴追蹤 C 型控制積木（如 control_repeat）內部的 SUBSTACK 積木鏈
+   */
+  function traverseSubstack(parentBlock, inputKey, blockMap) {
+    const collected = [];
+    if (!parentBlock || !parentBlock.inputs || !parentBlock.inputs[inputKey]) {
+      return collected;
+    }
+
+    const inputArr = parentBlock.inputs[inputKey];
+    let currentId = Array.isArray(inputArr) ? inputArr[1] : null;
+    const visited = new Set();
+
+    while (currentId && typeof currentId === 'string' && !visited.has(currentId)) {
+      visited.add(currentId);
+      const blk = blockMap.get(currentId);
+      if (!blk) break;
+
+      collected.push(blk);
+
+      // 若內部還有巢狀控制積木，一併展開檢查
+      if (blk.inputs) {
+        if (blk.inputs.SUBSTACK) {
+          collected.push(...traverseSubstack(blk, 'SUBSTACK', blockMap));
+        }
+        if (blk.inputs.SUBSTACK2) {
+          collected.push(...traverseSubstack(blk, 'SUBSTACK2', blockMap));
+        }
+      }
+
+      currentId = blk.next;
+    }
+
+    return collected;
+  }
+
+  /**
+   * 解析廣播積木中的訊息名稱（支援直接字串或影子積木）
+   */
+  function extractBroadcastName(broadcastBlock) {
+    if (!broadcastBlock.inputs || !broadcastBlock.inputs.BROADCAST_INPUT) return null;
+    const inp = broadcastBlock.inputs.BROADCAST_INPUT;
+    if (Array.isArray(inp) && Array.isArray(inp[1])) {
+      // 格式通常為 [11, "小狗說話", "broadcastId"]
+      return inp[1][1] || null;
+    }
+    return null;
+  }
+
+  /**
+   * 渲染班級批次評分結果總表
+   */
+  function renderBatchSummaryTable() {
+    document.getElementById('batchCount').innerText = batchResults.length;
+    const tbody = document.getElementById('summaryTableBody');
+    tbody.innerHTML = '';
+
+    batchResults.forEach((res, index) => {
+      const tr = document.createElement('tr');
+      tr.id = `row-${index}`;
+      tr.onclick = () => showStudentDetail(index);
+      tr.innerHTML = `
+        <td style="font-weight: 700; text-align: left; padding-left: 16px;">${escapeHtml(res.studentName)}</td>
+        <td style="color: #475569; font-size: 13px;">${escapeHtml(res.modeLabel)}</td>
+        <td>${res.s1} / 30</td>
+        <td>${res.s2} / 40</td>
+        <td>${res.s3} / 30</td>
+        <td style="font-size: 16px; font-weight: 800; color: ${res.isPass ? '#059669' : '#dc2626'};">${res.totalScore}</td>
+        <td><span class="badge ${res.isPass ? 'pass' : 'fail'}">${res.isPass ? '通過 (Pass)' : '需重傳 (Fail)'}</span></td>
+        <td><button class="btn-outline" type="button">查看明細</button></td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    document.getElementById('resultCard').style.display = 'block';
+    if (batchResults.length > 0) {
+      showStudentDetail(0);
+    }
+  }
+
+  /**
+   * 顯示單一學生的詳細評分報告與修正建議
+   */
+  function showStudentDetail(index) {
+    const res = batchResults[index];
+    if (!res) return;
+
+    // 高亮選取列
+    document.querySelectorAll('#summaryTableBody tr').forEach((row, i) => {
+      row.classList.toggle('active-row', i === index);
+    });
+
+    document.getElementById('detailStudentName').innerText = res.studentName;
+    document.getElementById('detailDetectedInfo').innerText = res.detectedSummary;
+
+    document.getElementById('detailStage1Score').innerText = `${res.s1} / 30 分`;
+    document.getElementById('detailStage1Details').innerHTML = renderDetailsList(res.s1Details);
+
+    document.getElementById('detailStage2Score').innerText = `${res.s2} / 40 分`;
+    document.getElementById('detailStage2Details').innerHTML = renderDetailsList(res.s2Details);
+
+    document.getElementById('detailStage3Score').innerText = `${res.s3} / 30 分`;
+    document.getElementById('detailStage3Details').innerHTML = renderDetailsList(res.s3Details);
+
+    const suggBox = document.getElementById('detailSuggestionBox');
+    if (!res.isPass && res.suggestions.length > 0) {
+      document.getElementById('detailSuggestionList').innerHTML = res.suggestions
+        .map(s => `<li>${escapeHtml(s)}</li>`)
+        .join('');
+      suggBox.style.display = 'block';
+    } else {
+      suggBox.style.display = 'none';
+    }
+
+    document.getElementById('studentDetailBox').style.display = 'block';
+  }
+
+  function renderDetailsList(details) {
+    if (!details || details.length === 0) {
+      return `<div class="check-item" style="color: #64748b;">無檢核資料</div>`;
+    }
+    return details.map(item => `
+      <div class="check-item">
+        <span class="check-icon ${item.pass ? 'success' : 'fail'}">${item.pass ? '✔' : '✖'}</span>
+        <span>${escapeHtml(item.text)}</span>
+      </div>
+    `).join('');
+  }
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  /**
+   * 使用 SheetJS 一鍵匯出全班成績單 (.xlsx)
+   */
+  function exportToExcel() {
+    if (batchResults.length === 0) {
+      showToast("⚠️ 目前尚無可匯出的評分資料，請先上傳學生 .sb3 作業檔！");
+      return;
+    }
+
+    const excelData = batchResults.map(r => ({
+      "學生 / 檔案名稱": r.studentName,
+      "偵測作品模式": r.modeLabel,
+      "階段一：背景與初始設定 (30)": r.s1,
+      "階段二：移動與重複邏輯 (40)": r.s2,
+      "階段三：對話與廣播互動 (30)": r.s3,
+      "作業總分": r.totalScore,
+      "判定結果": r.isPass ? "通過" : "需重傳",
+      "具體修正建議 / 評語": r.isPass
+        ? "表現優異！程式結構與動畫邏輯完全符合課堂標準。"
+        : r.suggestions.join(' ； ')
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(excelData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Scratch基礎篇評分總表");
+
+    // 設定欄位寬度以利閱讀
+    worksheet['!cols'] = [
+      { wch: 24 },
+      { wch: 20 },
+      { wch: 26 },
+      { wch: 26 },
+      { wch: 26 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 55 }
+    ];
+
+    XLSX.writeFile(workbook, "國一資科Scratch作業成績單_貓狗對話與斑馬走路.xlsx");
+  }
+</script>
+
+</body>
+</html>
